@@ -31,14 +31,15 @@
   }
   .hud.on { opacity: 1; transform: translateY(0); }
   .score {
-    font-size: 52px; font-weight: 200; line-height: 1;
+    font-size: 52px; font-weight: 800; line-height: 1;
     letter-spacing: .02em;
     font-variant-numeric: tabular-nums;
     color: #FAF6ED;
-    text-shadow: 0 4px 30px rgba(240, 180, 90, .18);
+    transform: skewX(-6deg);
+    text-shadow: 2px 0 0 rgba(255, 60, 50, .55), -2px 0 0 rgba(45, 120, 255, .55);
     transition: transform .12s ease;
   }
-  .score.pop { transform: scale(1.14); }
+  .score.pop { transform: skewX(-6deg) scale(1.14); }
   .best {
     margin-top: 8px;
     font-size: 11px; letter-spacing: .18em;
@@ -188,7 +189,7 @@
   var ctx = canvas.getContext('2d');
 
   var W = 0, H = 0, DPR = 1, S = 1, NOW = 0;
-  var PC = 1.5;                       // 棋子整体缩放
+  var PC = 0.95;                      // 角色整体缩放（胖龙基准高度 96）
   var BEST_KEY = 'jumpjump.best.v1';
 
   var CFG = {
@@ -204,19 +205,33 @@
     fallG: 1500
   };
 
-  var PAL = [
-    { top: '#B7C6F2', right: '#7C8FD0', left: '#5A6BA8' }, // 雾蓝
-    { top: '#EFA487', right: '#C9765A', left: '#9C5742' }, // 陶土
-    { top: '#92D6C1', right: '#58AA92', left: '#3F7E6C' }, // 青玉
-    { top: '#EFCF88', right: '#C6A255', left: '#95793C' }, // 暖金
-    { top: '#C9B6E8', right: '#9C85C4', left: '#77639D' }, // 淡紫
-    { top: '#9EC7DC', right: '#6E99B0', left: '#507488' }  // 灰蓝
-  ];
+  var INK = '#14110E';                 // 统一墨黑描边
+
+  // 塑料感纯色：不做渐变，仅靠明度分层区分三个面
+  var PAL = ['#FFD84D', '#FF4D3D', '#2E7BFF', '#3DDC6B', '#FF8A3D', '#21D4C4'];
+
+  function shade(hex, f) {
+    var n = parseInt(hex.slice(1), 16);
+    var r = Math.round(((n >> 16) & 255) * f);
+    var g = Math.round(((n >> 8) & 255) * f);
+    var b = Math.round((n & 255) * f);
+    return 'rgb(' + r + ',' + g + ',' + b + ')';
+  }
+
+  var PAL_FACES = PAL.map(function (c) {
+    return { top: c, right: shade(c, 0.76), left: shade(c, 0.54) };
+  });
 
   function clamp(v, a, b) { return v < a ? a : (v > b ? b : v); }
   function easeOut(t) { return 1 - Math.pow(1 - t, 3); }
   function easeInOut(t) { return t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2; }
   function rnd(a, b) { return a + Math.random() * (b - a); }
+
+  // 三级震动：用衰减正弦，不用随机抖动
+  function addShake(amp, dur) {
+    if (amp > G.shake.amp) G.shake.amp = amp;
+    if (dur > G.shake.dur) { G.shake.dur = dur; G.shake.t = 0; }
+  }
 
   /* =========================================================
      游戏状态
@@ -229,12 +244,14 @@
     platforms: [],
     cur: null,
     next: null,
-    player: { x: 0, y: 0, z: 0, rot: 0, sq: 0 },
+    player: { x: 0, y: 0, z: 0, rot: 0, sq: 0, mood: 'idle', pose: 'normal', faceT: 0 },
     cam: { x: 0, y: 0 },
     power: 0,
     chargeT: 0,
     flying: null,
     fall: null,
+    hitStop: 0,
+    shake: { amp: 0, t: 0, dur: 0 },
     fx: [],
     dust: []
   };
@@ -346,7 +363,7 @@
     }
     return {
       x: x, y: y, r: r,
-      colIdx: idx, col: PAL[idx],
+      colIdx: idx, col: PAL_FACES[idx],
       depth: CFG.depth,
       sink: 0,     // 蓄力下沉
       sq: 0,       // 落地压扁
@@ -386,7 +403,10 @@
     G.next = null;
 
     G.player.x = 0; G.player.y = 0; G.player.z = 0; G.player.rot = 0; G.player.sq = 0;
+    G.player.mood = 'idle'; G.player.pose = 'normal'; G.player.faceT = 0;
     G.cam.x = 0; G.cam.y = 0;
+    G.hitStop = 0;
+    G.shake.amp = 0; G.shake.t = 0; G.shake.dur = 0;
 
     spawnNext();
     updateHud();
@@ -473,22 +493,28 @@
 
     if (nd <= 1) {
       // 成功
-      pl.sq = 0.85;
       p.sq = 1;
       var perfect = nd <= 0.28;
 
       if (perfect) {
+        // 完美：顿帧 + 六像素震动 + 落地弹开（负值 = 拉伸）
         G.combo++;
         G.score += 2;
+        pl.sq = -0.42;
+        G.hitStop = 0.075;
+        addShake(6, 0.14);
         burst(pl.x, pl.y, true);
         sfxPerfect();
       } else {
         G.combo = 0;
         G.score += 1;
+        pl.sq = 0.8;
+        addShake(2, 0.08);
         burst(pl.x, pl.y, false);
         sfxLand();
       }
 
+      pl.faceT = perfect ? 0.4 : 0.24;
       G.cur = p;
       spawnNext();
       updateHud();
@@ -510,8 +536,22 @@
         G.player.y = c.y + dy * k;
       }
     }
-    G.player.z = 0;
-    G.fall = { vz: -10, vx: rnd(-20, 20), vy: rnd(6, 26), spin: (Math.random() < 0.5 ? -1 : 1) * rnd(4, 7), t: 0 };
+    var pl = G.player;
+    pl.z = 0;
+    pl.sq = -0.3;
+    pl.pose = 'ragdoll';
+    pl.faceT = 99;
+    // 扑街：先空中定格 0.15s，再四肢张开自由落体
+    G.fall = {
+      phase: 'hit', t: 0,
+      vz: 0, vx: rnd(-26, 26), vy: rnd(4, 20),
+      spin: (Math.random() < 0.5 ? -1 : 1) * rnd(1.4, 2.4)
+    };
+    G.fx.push({
+      t: 'text', x: pl.x, y: pl.y, z: 120, life: 0, max: 1.1,
+      str: Math.random() < 0.5 ? '啊这' : '寄', col: '#FF6B5A'
+    });
+    addShake(12, 0.3);
     G.mode = 'fall';
     sfxFail();
   }
@@ -560,6 +600,9 @@
      主循环
      ========================================================= */
   function update(dt, ts) {
+    // 震动计时
+    if (G.shake.t < G.shake.dur) G.shake.t += dt;
+
     // 相机缓动跟随当前方块
     if (G.cur && G.mode !== 'over') {
       var k = 1 - Math.exp(-dt * 6);
@@ -586,7 +629,7 @@
       G.player.sq += (0 - G.player.sq) * (1 - Math.exp(-dt * 14));
     }
 
-    // 飞行
+    // 飞行：团身翻滚（约 200°，不做整圈自转）
     if (G.mode === 'flying' && G.flying) {
       var f = G.flying;
       f.t += dt * 1000;
@@ -594,20 +637,31 @@
       G.player.x = f.x0 + (f.x1 - f.x0) * t;
       G.player.y = f.y0 + (f.y1 - f.y0) * t;
       G.player.z = 4 * f.h * t * (1 - t);
-      G.player.rot = f.sign * Math.PI * 2 * t;
+      G.player.rot = f.sign * Math.PI * 1.15 * easeInOut(t);
+      G.player.sq = 0.22 * Math.sin(Math.PI * t);
       if (t >= 1) land();
     }
 
-    // 坠落
+    // 坠落：空中定格 → 自由落体
     if (G.mode === 'fall' && G.fall) {
-      G.fall.vz -= CFG.fallG * dt;
-      G.player.z += G.fall.vz * dt;
-      G.player.x += G.fall.vx * dt;
-      G.player.y += G.fall.vy * dt;
-      G.player.rot += G.fall.spin * dt;
       G.fall.t += dt;
-      if (G.fall.t > 0.95) gameOver();
+      if (G.fall.phase === 'hit') {
+        if (G.fall.t > 0.15) { G.fall.phase = 'drop'; G.fall.t = 0; }
+      } else {
+        G.fall.vz -= CFG.fallG * dt;
+        G.player.z += G.fall.vz * dt;
+        G.player.x += G.fall.vx * dt;
+        G.player.y += G.fall.vy * dt;
+        G.player.rot += G.fall.spin * dt;
+        if (G.fall.t > 0.85) gameOver();
+      }
     }
+
+    // 表情状态机
+    if (G.player.faceT > 0) G.player.faceT -= dt;
+    if (G.mode === 'charging') G.player.mood = 'charge';
+    else if (G.player.faceT > 0) G.player.mood = 'dizzy';
+    else G.player.mood = 'idle';
 
     updateFx(dt);
 
@@ -681,7 +735,7 @@
     ctx.fill();
     ctx.restore();
 
-    // 左侧面
+    // 左侧面（最暗）
     ctx.beginPath();
     ctx.moveTo(p.x - w, top);
     ctx.lineTo(p.x, top + h);
@@ -691,7 +745,7 @@
     ctx.fillStyle = p.col.left;
     ctx.fill();
 
-    // 右侧面
+    // 右侧面（中间调）
     ctx.beginPath();
     ctx.moveTo(p.x + w, top);
     ctx.lineTo(p.x, top + h);
@@ -701,7 +755,7 @@
     ctx.fillStyle = p.col.right;
     ctx.fill();
 
-    // 顶面
+    // 顶面（纯色，无渐变）
     ctx.beginPath();
     ctx.moveTo(p.x, top - h);
     ctx.lineTo(p.x + w, top);
@@ -711,74 +765,169 @@
     ctx.fillStyle = p.col.top;
     ctx.fill();
 
-    // 顶面光影
-    ctx.save();
-    ctx.clip();
-    var sh = ctx.createLinearGradient(p.x, top - h, p.x, top + h);
-    sh.addColorStop(0, 'rgba(255,255,255,0.20)');
-    sh.addColorStop(0.5, 'rgba(255,255,255,0.02)');
-    sh.addColorStop(1, 'rgba(0,0,0,0.12)');
-    ctx.fillStyle = sh;
-    ctx.fillRect(p.x - w, top - h, w * 2, h * 2);
-    ctx.restore();
+    // 一道硬边高光（沿上左侧棱线，不做渐变）
+    ctx.beginPath();
+    ctx.moveTo(p.x - w * 0.86, top - h * 0.13);
+    ctx.lineTo(p.x - w * 0.14, top - h * 0.83);
+    ctx.strokeStyle = 'rgba(255,255,255,0.62)';
+    ctx.lineWidth = Math.max(1.8, w * 0.048);
+    ctx.lineCap = 'round';
+    ctx.stroke();
 
-    // 上边缘高光
+    // 顶面与侧面的折线（漫画分界）
+    ctx.beginPath();
+    ctx.moveTo(p.x - w, top);
+    ctx.lineTo(p.x, top + h);
+    ctx.lineTo(p.x + w, top);
+    ctx.strokeStyle = 'rgba(20,17,14,0.5)';
+    ctx.lineWidth = 1.6;
+    ctx.lineJoin = 'round';
+    ctx.stroke();
+
+    // 外轮廓描边
     ctx.beginPath();
     ctx.moveTo(p.x - w, top);
     ctx.lineTo(p.x, top - h);
     ctx.lineTo(p.x + w, top);
-    ctx.strokeStyle = 'rgba(255,255,255,0.26)';
-    ctx.lineWidth = 1.2;
+    ctx.lineTo(p.x + w, top + dep);
+    ctx.lineTo(p.x, top + h + dep);
+    ctx.lineTo(p.x - w, top + dep);
+    ctx.closePath();
+    ctx.strokeStyle = INK;
+    ctx.lineWidth = 2.5;
+    ctx.lineJoin = 'round';
     ctx.stroke();
   }
 
-  function drawPawn() {
-    // 底座
-    ctx.beginPath();
-    ctx.ellipse(0, -5, 13, 5, 0, 0, 6.2832);
-    ctx.fillStyle = '#948C7C';
-    ctx.fill();
+  /* ---------- 原创胖龙：两头身，头占 55% ---------- */
+  var DRAGON_BODY = '#FFD84D';
+  var DRAGON_BELLY = '#FFF3C4';
+
+  function drawWings(spread) {
+    for (var s = -1; s <= 1; s += 2) {
+      ctx.save();
+      ctx.scale(s, 1);
+      ctx.beginPath();
+      ctx.moveTo(-22, -34);
+      ctx.bezierCurveTo(-38, -40 - spread * 5, -48 - spread * 10, -26 - spread * 6,
+                        -39 - spread * 8, -17 - spread * 3);
+      ctx.bezierCurveTo(-32, -22, -25, -28, -22, -34);
+      ctx.closePath();
+      ctx.fillStyle = DRAGON_BODY;
+      ctx.fill();
+      ctx.strokeStyle = INK;
+      ctx.lineWidth = 2.2;
+      ctx.lineJoin = 'round';
+      ctx.stroke();
+      ctx.restore();
+    }
+  }
+
+  function drawFace(mood) {
+    var ex = 11.5, ey = -64;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+
+    if (mood === 'charge') {
+      ctx.fillStyle = INK;
+      [-1, 1].forEach(function (s) {
+        ctx.beginPath(); ctx.arc(s * ex, ey, 5.4, 0, 6.2832); ctx.fill();
+      });
+      ctx.fillStyle = 'rgba(255,255,255,0.9)';
+      [-1, 1].forEach(function (s) {
+        ctx.beginPath(); ctx.arc(s * ex + 1.7, ey - 2.1, 1.7, 0, 6.2832); ctx.fill();
+      });
+      ctx.fillStyle = 'rgba(255,96,80,0.4)';
+      [-1, 1].forEach(function (s) {
+        ctx.beginPath(); ctx.ellipse(s * 21, -52, 6.5, 4.2, 0, 0, 6.2832); ctx.fill();
+      });
+      ctx.fillStyle = INK;
+      ctx.beginPath(); ctx.ellipse(0, -50, 4.6, 5.6, 0, 0, 6.2832); ctx.fill();
+    } else if (mood === 'dizzy') {
+      ctx.strokeStyle = INK;
+      ctx.lineWidth = 2.6;
+      [-1, 1].forEach(function (s) {
+        ctx.beginPath();
+        ctx.moveTo(s * ex - 4.2, ey - 4.2); ctx.lineTo(s * ex + 4.2, ey + 4.2);
+        ctx.moveTo(s * ex + 4.2, ey - 4.2); ctx.lineTo(s * ex - 4.2, ey + 4.2);
+        ctx.stroke();
+      });
+      ctx.fillStyle = INK;
+      ctx.beginPath(); ctx.ellipse(0, -49, 3.4, 4.2, 0, 0, 6.2832); ctx.fill();
+    } else {
+      ctx.strokeStyle = INK;
+      ctx.lineWidth = 2.6;
+      [-1, 1].forEach(function (s) {
+        ctx.beginPath();
+        ctx.moveTo(s * ex - 5.2, ey + 1.4);
+        ctx.quadraticCurveTo(s * ex, ey - 3.6, s * ex + 5.2, ey + 1.4);
+        ctx.stroke();
+      });
+      ctx.lineWidth = 2.1;
+      ctx.beginPath();
+      ctx.moveTo(-4.6, -50.5);
+      ctx.quadraticCurveTo(0, -46, 4.6, -50.5);
+      ctx.stroke();
+    }
+  }
+
+  function drawDragon(mood, pose) {
+    var spread = pose === 'ragdoll' ? 1 : 0;
+
+    // 脚
+    ctx.fillStyle = DRAGON_BODY;
+    ctx.strokeStyle = INK;
+    ctx.lineWidth = 2.2;
+    [-1, 1].forEach(function (s) {
+      ctx.beginPath();
+      ctx.ellipse(s * 13, -5 + spread * 4, 13, 6.5, 0, 0, 6.2832);
+      ctx.fill();
+      ctx.stroke();
+    });
+
+    // 翅膀（压在本体之下）
+    drawWings(spread);
 
     // 身体
-    var bg = ctx.createLinearGradient(-13, 0, 13, 0);
-    bg.addColorStop(0, '#FFFDF6');
-    bg.addColorStop(0.42, '#F6EEDE');
-    bg.addColorStop(1, '#C3B79C');
     ctx.beginPath();
-    ctx.moveTo(-10.5, -5);
-    ctx.bezierCurveTo(-9.8, -20, -7.8, -33, -7, -41);
-    ctx.lineTo(7, -41);
-    ctx.bezierCurveTo(7.8, -33, 9.8, -20, 10.5, -5);
-    ctx.ellipse(0, -5, 10.5, 4.6, 0, 0, Math.PI, false);
+    ctx.moveTo(-25, -6);
+    ctx.bezierCurveTo(-28, -20, -26, -36, -21, -46);
+    ctx.lineTo(21, -46);
+    ctx.bezierCurveTo(26, -36, 28, -20, 25, -6);
+    ctx.ellipse(0, -6, 25, 6, 0, 0, Math.PI, false);
     ctx.closePath();
-    ctx.fillStyle = bg;
+    ctx.fillStyle = DRAGON_BODY;
     ctx.fill();
-
-    // 腰线
-    ctx.beginPath();
-    ctx.moveTo(-9.35, -17);
-    ctx.lineTo(9.35, -17);
-    ctx.strokeStyle = 'rgba(233,169,74,0.9)';
-    ctx.lineWidth = 2.1;
+    ctx.strokeStyle = INK;
+    ctx.lineWidth = 2.5;
+    ctx.lineJoin = 'round';
     ctx.stroke();
 
-    // 左侧轮廓光
+    // 肚皮
     ctx.beginPath();
-    ctx.moveTo(-8.7, -10);
-    ctx.bezierCurveTo(-8.1, -21, -6.9, -32, -6.3, -39.5);
-    ctx.strokeStyle = 'rgba(255,255,255,0.55)';
-    ctx.lineWidth = 1.5;
-    ctx.stroke();
+    ctx.ellipse(0, -20, 16, 12, 0, 0, 6.2832);
+    ctx.fillStyle = DRAGON_BELLY;
+    ctx.fill();
 
     // 头
-    var hg = ctx.createRadialGradient(-3.4, -52.5, 1, -2, -49, 13);
-    hg.addColorStop(0, '#FFFFFF');
-    hg.addColorStop(0.62, '#F8F1E3');
-    hg.addColorStop(1, '#CFC4AC');
     ctx.beginPath();
-    ctx.arc(0, -49, 10.5, 0, 6.2832);
-    ctx.fillStyle = hg;
+    ctx.ellipse(0, -62, 32, 30, 0, 0, 6.2832);
+    ctx.fillStyle = DRAGON_BODY;
     ctx.fill();
+    ctx.strokeStyle = INK;
+    ctx.lineWidth = 2.5;
+    ctx.stroke();
+
+    // 呆毛
+    ctx.beginPath();
+    ctx.moveTo(0, -90);
+    ctx.quadraticCurveTo(3, -104, 13, -101);
+    ctx.strokeStyle = INK;
+    ctx.lineWidth = 2.4;
+    ctx.lineCap = 'round';
+    ctx.stroke();
+
+    drawFace(mood);
   }
 
   function drawPlayer() {
@@ -807,12 +956,12 @@
     ctx.save();
     ctx.translate(pl.x, pl.y + extra + 2);
     ctx.scale(1, 0.42);
-    var g = ctx.createRadialGradient(0, 0, 0, 0, 0, 23);
+    var g = ctx.createRadialGradient(0, 0, 0, 0, 0, 30);
     g.addColorStop(0, 'rgba(0,0,0,' + (0.36 * shA).toFixed(3) + ')');
     g.addColorStop(1, 'rgba(0,0,0,0)');
     ctx.fillStyle = g;
     ctx.beginPath();
-    ctx.arc(0, 0, 23, 0, 6.2832);
+    ctx.arc(0, 0, 30, 0, 6.2832);
     ctx.fill();
     ctx.restore();
 
@@ -820,12 +969,12 @@
     ctx.save();
     ctx.translate(pl.x, pl.y + extra - pl.z);
     ctx.scale(PC, PC);
-    ctx.translate(0, -28);
+    ctx.translate(0, -46);
     ctx.rotate(pl.rot);
-    ctx.translate(0, 28);
+    ctx.translate(0, 46);
     var sq = pl.sq || 0;
-    ctx.scale(1 + 0.30 * sq, 1 - 0.32 * sq);
-    drawPawn();
+    ctx.scale(1 + 0.26 * sq, 1 - 0.28 * sq);
+    drawDragon(pl.mood, pl.pose);
     ctx.restore();
   }
 
@@ -849,7 +998,7 @@
         ctx.stroke();
       } else if (f.t === 'text') {
         ctx.globalAlpha = 1 - k * k;
-        ctx.fillStyle = '#FFD98A';
+        ctx.fillStyle = f.col || '#FFD98A';
         ctx.font = '600 17px -apple-system,"PingFang SC",sans-serif';
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
@@ -901,9 +1050,18 @@
     ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
     drawBg();
 
+    // 震动偏移：衰减正弦（普通 2px / 完美 6px / 失败 12px）
+    var ox = 0, oy = 0;
+    if (G.shake.t < G.shake.dur) {
+      var kk = 1 - G.shake.t / G.shake.dur;
+      var amp = G.shake.amp * kk * kk;
+      ox = Math.sin(G.shake.t * 92) * amp;
+      oy = Math.cos(G.shake.t * 71) * amp * 0.65;
+    }
+
     // 世界相机变换
-    var tx = W * 0.5 - S * G.cam.x;
-    var ty = H * 0.66 - S * G.cam.y;
+    var tx = W * 0.5 - S * G.cam.x + ox;
+    var ty = H * 0.66 - S * G.cam.y + oy;
     ctx.setTransform(DPR * S, 0, 0, DPR * S, DPR * tx, DPR * ty);
 
     // 深度排序
@@ -934,6 +1092,8 @@
     if (!last) last = ts;
     var dt = Math.min(0.045, (ts - last) / 1000);
     last = ts;
+    // 顿帧：完美命中瞬间把世界时间冻结约 75ms
+    if (G.hitStop > 0) { G.hitStop -= dt; dt = 0; }
     update(dt, ts);
     render();
   }
