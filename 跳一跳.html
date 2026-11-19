@@ -1,0 +1,1010 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+<meta name="theme-color" content="#0A0D14" />
+<title>跳一跳</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body {
+    width: 100%; height: 100%; overflow: hidden; background: #0A0D14;
+  }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+    -webkit-user-select: none; user-select: none;
+    -webkit-tap-highlight-color: transparent;
+    -webkit-touch-callout: none;
+    touch-action: none;
+    color: #F4EFE6;
+  }
+  #game { display: block; width: 100%; height: 100%; cursor: pointer; }
+
+  /* ---------- HUD ---------- */
+  .hud {
+    position: fixed; top: 0; left: 0; right: 0;
+    padding: 26px 30px;
+    display: flex; align-items: flex-start; justify-content: space-between;
+    pointer-events: none; z-index: 5;
+    opacity: 0; transform: translateY(-6px);
+    transition: opacity .45s ease, transform .45s ease;
+  }
+  .hud.on { opacity: 1; transform: translateY(0); }
+  .score {
+    font-size: 52px; font-weight: 200; line-height: 1;
+    letter-spacing: .02em;
+    font-variant-numeric: tabular-nums;
+    color: #FAF6ED;
+    text-shadow: 0 4px 30px rgba(240, 180, 90, .18);
+    transition: transform .12s ease;
+  }
+  .score.pop { transform: scale(1.14); }
+  .best {
+    margin-top: 8px;
+    font-size: 11px; letter-spacing: .18em;
+    color: rgba(244, 239, 230, .42);
+    font-variant-numeric: tabular-nums;
+  }
+  .best b { font-weight: 600; color: rgba(244, 239, 230, .68); }
+  .sound {
+    pointer-events: auto;
+    background: rgba(255, 255, 255, .05);
+    border: 1px solid rgba(255, 255, 255, .1);
+    color: rgba(244, 239, 230, .55);
+    font-size: 11px; letter-spacing: .1em;
+    padding: 8px 13px; border-radius: 999px;
+    cursor: pointer; font-family: inherit;
+    transition: all .2s ease;
+  }
+  .sound:hover { color: #F0B45A; border-color: rgba(240, 180, 90, .4); }
+  .sound.off { opacity: .45; }
+
+  /* ---------- overlays ---------- */
+  .screen {
+    position: fixed; inset: 0; z-index: 10;
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    background: radial-gradient(ellipse at 50% 40%, rgba(24, 31, 48, .94) 0%, rgba(9, 12, 20, .975) 58%, #06090F 100%);
+    -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px);
+    animation: fadeIn .45s ease both;
+  }
+  @keyframes fadeIn { from { opacity: 0 } to { opacity: 1 } }
+  .screen.hidden { display: none; }
+
+  .brand { display: flex; flex-direction: column; align-items: center; }
+  .brand h1 {
+    font-family: "Songti SC", "STSong", "SimSun", "Noto Serif SC", serif;
+    font-size: 56px; font-weight: 600;
+    letter-spacing: .2em; text-indent: .2em;
+    color: #F8F3E9;
+    text-shadow: 0 6px 46px rgba(240, 180, 90, .26);
+  }
+  .rule {
+    width: 42px; height: 1px; margin: 22px 0 18px;
+    background: linear-gradient(90deg, transparent, rgba(240, 180, 90, .75), transparent);
+  }
+  .sub {
+    font-size: 13px; letter-spacing: .3em; text-indent: .3em;
+    color: rgba(244, 239, 230, .5);
+  }
+
+  .btn {
+    margin-top: 34px;
+    padding: 15px 50px;
+    font-family: inherit; font-size: 15px; font-weight: 600;
+    letter-spacing: .3em; text-indent: .3em;
+    color: #14100A;
+    border: none; border-radius: 999px; cursor: pointer;
+    background: linear-gradient(180deg, #F7CE84 0%, #E9A94A 100%);
+    box-shadow: 0 12px 34px -10px rgba(233, 169, 74, .65), inset 0 1px 0 rgba(255, 255, 255, .55);
+    transition: transform .16s ease, box-shadow .2s ease, filter .2s ease;
+  }
+  .btn:hover { filter: brightness(1.06); box-shadow: 0 16px 40px -10px rgba(233, 169, 74, .8), inset 0 1px 0 rgba(255, 255, 255, .55); }
+  .btn:active { transform: translateY(1px) scale(.985); }
+
+  .tip {
+    margin-top: 26px;
+    font-size: 12px; letter-spacing: .08em;
+    color: rgba(244, 239, 230, .3);
+  }
+
+  /* game over panel */
+  .panel {
+    min-width: 264px; padding: 36px 44px 32px;
+    border-radius: 26px;
+    display: flex; flex-direction: column; align-items: center;
+    background: linear-gradient(180deg, rgba(33, 41, 60, .92) 0%, rgba(15, 20, 31, .94) 100%);
+    border: 1px solid rgba(255, 255, 255, .07);
+    box-shadow: 0 40px 90px -30px #000, inset 0 1px 0 rgba(255, 255, 255, .06);
+  }
+  .panel .label {
+    font-size: 11px; letter-spacing: .32em; text-indent: .32em;
+    color: rgba(244, 239, 230, .38);
+  }
+  .panel .big {
+    margin: 14px 0 4px;
+    font-size: 78px; font-weight: 200; line-height: 1.05;
+    font-variant-numeric: tabular-nums;
+    color: #F8F3E9;
+    text-shadow: 0 8px 50px rgba(240, 180, 90, .22);
+  }
+  .panel .row {
+    margin-top: 6px;
+    display: flex; align-items: center; gap: 12px;
+    font-size: 12px; letter-spacing: .14em;
+    color: rgba(244, 239, 230, .38);
+  }
+  .panel .row b {
+    font-weight: 600; color: #F0B45A;
+    font-variant-numeric: tabular-nums; letter-spacing: .04em;
+  }
+  .panel .btn { margin-top: 26px; padding: 13px 40px; font-size: 14px; }
+
+  @media (max-height: 620px) {
+    .brand h1 { font-size: 42px; }
+    .panel .big { font-size: 60px; }
+    .btn { margin-top: 22px; padding: 13px 42px; }
+  }
+</style>
+</head>
+<body>
+<canvas id="game"></canvas>
+
+<div class="hud" id="hud">
+  <div>
+    <div class="score" id="score">0</div>
+    <div class="best">最高 <b id="best">0</b></div>
+  </div>
+  <button class="sound" id="soundBtn">音效 开</button>
+</div>
+
+<div class="screen" id="startScreen">
+  <div class="brand">
+    <h1>跳一跳</h1>
+    <div class="rule"></div>
+    <p class="sub">按住蓄力 · 松开起跳</p>
+  </div>
+  <button class="btn" id="btnStart">开 始</button>
+  <p class="tip">落在方块正中央，可得双倍分数</p>
+</div>
+
+<div class="screen hidden" id="overScreen">
+  <div class="panel">
+    <div class="label">本 次 得 分</div>
+    <div class="big" id="finalScore">0</div>
+    <div class="row"><span>最高纪录</span><b id="best2">0</b></div>
+    <button class="btn" id="btnRetry">再 来 一 次</button>
+  </div>
+</div>
+
+<script>
+(function () {
+  'use strict';
+
+  /* =========================================================
+     基础设置
+     ========================================================= */
+  var canvas = document.getElementById('game');
+  var ctx = canvas.getContext('2d');
+
+  var W = 0, H = 0, DPR = 1, S = 1, NOW = 0;
+  var PC = 1.5;                       // 棋子整体缩放
+  var BEST_KEY = 'jumpjump.best.v1';
+
+  var CFG = {
+    chargeMs: 980,      // 蓄满力所需时间
+    maxDist: 340,       // 满蓄力跳跃距离（世界单位）
+    rStart: 56,         // 起始方块半径
+    rMin: 37,           // 最小半径
+    gapMin: 102,        // 最小间距
+    gapMax: 170,        // 最大间距
+    gapGrow: 2.4,       // 每分增加间距
+    gapGrowMax: 30,
+    depth: 26,          // 方块厚度
+    fallG: 1500
+  };
+
+  var PAL = [
+    { top: '#B7C6F2', right: '#7C8FD0', left: '#5A6BA8' }, // 雾蓝
+    { top: '#EFA487', right: '#C9765A', left: '#9C5742' }, // 陶土
+    { top: '#92D6C1', right: '#58AA92', left: '#3F7E6C' }, // 青玉
+    { top: '#EFCF88', right: '#C6A255', left: '#95793C' }, // 暖金
+    { top: '#C9B6E8', right: '#9C85C4', left: '#77639D' }, // 淡紫
+    { top: '#9EC7DC', right: '#6E99B0', left: '#507488' }  // 灰蓝
+  ];
+
+  function clamp(v, a, b) { return v < a ? a : (v > b ? b : v); }
+  function easeOut(t) { return 1 - Math.pow(1 - t, 3); }
+  function easeInOut(t) { return t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2; }
+  function rnd(a, b) { return a + Math.random() * (b - a); }
+
+  /* =========================================================
+     游戏状态
+     ========================================================= */
+  var G = {
+    mode: 'start',          // start | ready | charging | flying | fall | over
+    score: 0,
+    best: 0,
+    combo: 0,
+    platforms: [],
+    cur: null,
+    next: null,
+    player: { x: 0, y: 0, z: 0, rot: 0, sq: 0 },
+    cam: { x: 0, y: 0 },
+    power: 0,
+    chargeT: 0,
+    flying: null,
+    fall: null,
+    fx: [],
+    dust: []
+  };
+
+  try { G.best = parseInt(localStorage.getItem(BEST_KEY) || '0', 10) || 0; } catch (e) { G.best = 0; }
+
+  /* =========================================================
+     尺寸
+     ========================================================= */
+  function resize() {
+    DPR = Math.min(window.devicePixelRatio || 1, 2);
+    W = window.innerWidth;
+    H = window.innerHeight;
+    canvas.width = Math.round(W * DPR);
+    canvas.height = Math.round(H * DPR);
+    canvas.style.width = W + 'px';
+    canvas.style.height = H + 'px';
+    S = clamp(Math.min(W / 450, H / 860), 0.5, 1.2);
+    makeDust();
+  }
+
+  function makeDust() {
+    G.dust = [];
+    var n = Math.round(W * H / 24000);
+    n = clamp(n, 18, 70);
+    for (var i = 0; i < n; i++) {
+      G.dust.push({
+        x: Math.random() * W,
+        y: Math.random() * H,
+        r: rnd(0.5, 1.9),
+        a: rnd(0.04, 0.24),
+        vy: -rnd(2, 10),
+        vx: rnd(-3, 3),
+        ph: Math.random() * 6.283
+      });
+    }
+  }
+
+  /* =========================================================
+     音效（WebAudio 合成，无外部资源）
+     ========================================================= */
+  var actx = null, muted = false, chargeNode = null;
+
+  function audio() {
+    if (!actx) {
+      try { actx = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) { actx = null; }
+    }
+    if (actx && actx.state === 'suspended') { actx.resume(); }
+    return actx;
+  }
+
+  function beep(freq, dur, type, vol, slideTo, delay) {
+    if (muted) return;
+    var a = audio(); if (!a) return;
+    var t0 = a.currentTime + (delay || 0);
+    var o = a.createOscillator(), g = a.createGain();
+    o.type = type || 'sine';
+    o.frequency.setValueAtTime(freq, t0);
+    if (slideTo) o.frequency.exponentialRampToValueAtTime(Math.max(20, slideTo), t0 + dur);
+    g.gain.setValueAtTime(0.0001, t0);
+    g.gain.exponentialRampToValueAtTime(vol || 0.07, t0 + 0.014);
+    g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+    o.connect(g); g.connect(a.destination);
+    o.start(t0); o.stop(t0 + dur + 0.03);
+  }
+
+  function startChargeSound() {
+    if (muted) return;
+    var a = audio(); if (!a) return;
+    stopChargeSound();
+    var o = a.createOscillator(), g = a.createGain();
+    o.type = 'triangle';
+    o.frequency.setValueAtTime(150, a.currentTime);
+    o.frequency.linearRampToValueAtTime(520, a.currentTime + CFG.chargeMs / 1000);
+    g.gain.setValueAtTime(0.0001, a.currentTime);
+    g.gain.linearRampToValueAtTime(0.03, a.currentTime + 0.09);
+    o.connect(g); g.connect(a.destination);
+    o.start();
+    chargeNode = { o: o, g: g };
+  }
+
+  function stopChargeSound() {
+    if (!chargeNode || !actx) { chargeNode = null; return; }
+    var o = chargeNode.o, g = chargeNode.g;
+    try {
+      g.gain.cancelScheduledValues(actx.currentTime);
+      g.gain.setTargetAtTime(0.0001, actx.currentTime, 0.02);
+      o.stop(actx.currentTime + 0.1);
+    } catch (e) {}
+    chargeNode = null;
+  }
+
+  function sfxLand() { beep(240, 0.1, 'sine', 0.06, 130); }
+  function sfxPerfect() {
+    beep(880, 0.16, 'sine', 0.055);
+    beep(1320, 0.22, 'sine', 0.045, null, 0.07);
+  }
+  function sfxFail() { beep(320, 0.45, 'sawtooth', 0.045, 70); }
+
+  /* =========================================================
+     方块
+     ========================================================= */
+  function makePlatform(x, y, r, colIdx) {
+    var idx = colIdx;
+    if (idx === undefined || idx === null) {
+      var guard = 0;
+      do { idx = (Math.random() * PAL.length) | 0; guard++; }
+      while (G.cur && G.cur.colIdx === idx && guard < 12);
+    }
+    return {
+      x: x, y: y, r: r,
+      colIdx: idx, col: PAL[idx],
+      depth: CFG.depth,
+      sink: 0,     // 蓄力下沉
+      sq: 0,       // 落地压扁
+      pop: 1       // 出现动画
+    };
+  }
+
+  function spawnNext() {
+    var dir = Math.random() < 0.5 ? -1 : 1;
+    var grow = Math.min(CFG.gapGrowMax, G.score * CFG.gapGrow);
+    var gap = CFG.gapMin + Math.random() * (CFG.gapMax - CFG.gapMin + grow);
+    var r = Math.max(CFG.rMin, CFG.rStart - G.score * 0.62);
+    var vx = 0.8944 * dir, vy = -0.4472;
+    var p = makePlatform(G.cur.x + vx * gap, G.cur.y + vy * gap, r);
+    p.pop = 0;
+    G.platforms.push(p);
+    G.next = p;
+    if (G.platforms.length > 8) G.platforms.splice(0, G.platforms.length - 8);
+  }
+
+  /* =========================================================
+     重置 / 开始
+     ========================================================= */
+  function reset() {
+    G.platforms = [];
+    G.fx = [];
+    G.score = 0;
+    G.combo = 0;
+    G.power = 0;
+    G.flying = null;
+    G.fall = null;
+
+    var p0 = makePlatform(0, 0, CFG.rStart, 0);
+    p0.pop = 1;
+    G.platforms.push(p0);
+    G.cur = p0;
+    G.next = null;
+
+    G.player.x = 0; G.player.y = 0; G.player.z = 0; G.player.rot = 0; G.player.sq = 0;
+    G.cam.x = 0; G.cam.y = 0;
+
+    spawnNext();
+    updateHud();
+  }
+
+  function startGame() {
+    document.getElementById('startScreen').classList.add('hidden');
+    document.getElementById('overScreen').classList.add('hidden');
+    document.getElementById('hud').classList.add('on');
+    audio();
+    reset();
+    G.mode = 'ready';
+  }
+
+  function gameOver() {
+    G.mode = 'over';
+    if (G.score > G.best) {
+      G.best = G.score;
+      try { localStorage.setItem(BEST_KEY, String(G.best)); } catch (e) {}
+    }
+    document.getElementById('finalScore').textContent = G.score;
+    document.getElementById('best2').textContent = G.best;
+    document.getElementById('overScreen').classList.remove('hidden');
+    document.getElementById('hud').classList.remove('on');
+    updateHud();
+  }
+
+  function updateHud() {
+    var el = document.getElementById('score');
+    if (el.textContent !== String(G.score)) {
+      el.textContent = G.score;
+      el.classList.remove('pop');
+      void el.offsetWidth;
+      el.classList.add('pop');
+      setTimeout(function () { el.classList.remove('pop'); }, 130);
+    }
+    document.getElementById('best').textContent = G.best;
+  }
+
+  /* =========================================================
+     输入
+     ========================================================= */
+  function press() {
+    if (G.mode !== 'ready') return;
+    G.mode = 'charging';
+    G.chargeT = performance.now();
+    G.power = 0;
+    startChargeSound();
+  }
+
+  function release() {
+    if (G.mode !== 'charging') return;
+    stopChargeSound();
+
+    var pl = G.player, p = G.next;
+    if (!p) { G.mode = 'ready'; return; }
+
+    var dx = p.x - pl.x, dy = p.y - pl.y;
+    var need = Math.sqrt(dx * dx + dy * dy) || 1;
+    var dist = G.power * CFG.maxDist;
+
+    G.flying = {
+      x0: pl.x, y0: pl.y,
+      x1: pl.x + dx / need * dist,
+      y1: pl.y + dy / need * dist,
+      t: 0,
+      dur: clamp(310 + dist * 1.05, 330, 790),
+      h: 46 + dist * 0.30,
+      sign: dx >= 0 ? 1 : -1
+    };
+    if (G.cur) G.cur.sink = 0;
+    G.mode = 'flying';
+  }
+
+  /* =========================================================
+     落地判定
+     ========================================================= */
+  function land() {
+    var p = G.next, pl = G.player;
+    pl.z = 0;
+    pl.rot = 0;
+
+    var nd = Math.abs(pl.x - p.x) / p.r + Math.abs(pl.y - p.y) / (p.r * 0.5);
+
+    if (nd <= 1) {
+      // 成功
+      pl.sq = 0.85;
+      p.sq = 1;
+      var perfect = nd <= 0.28;
+
+      if (perfect) {
+        G.combo++;
+        G.score += 2;
+        burst(pl.x, pl.y, true);
+        sfxPerfect();
+      } else {
+        G.combo = 0;
+        G.score += 1;
+        burst(pl.x, pl.y, false);
+        sfxLand();
+      }
+
+      G.cur = p;
+      spawnNext();
+      updateHud();
+      G.mode = 'ready';
+    } else {
+      fail();
+    }
+  }
+
+  function fail() {
+    // 如果落在原方块上，把坠落点推到方块边缘，观感更自然
+    var c = G.cur;
+    if (c) {
+      var dx = G.player.x - c.x, dy = G.player.y - c.y;
+      var nd = Math.abs(dx) / c.r + Math.abs(dy) / (c.r * 0.5);
+      if (nd <= 1 && nd > 0.0001) {
+        var k = 1 / nd;
+        G.player.x = c.x + dx * k;
+        G.player.y = c.y + dy * k;
+      }
+    }
+    G.player.z = 0;
+    G.fall = { vz: -10, vx: rnd(-20, 20), vy: rnd(6, 26), spin: (Math.random() < 0.5 ? -1 : 1) * rnd(4, 7), t: 0 };
+    G.mode = 'fall';
+    sfxFail();
+  }
+
+  /* =========================================================
+     粒子特效
+     ========================================================= */
+  function burst(x, y, perfect) {
+    var n = perfect ? 16 : 7;
+    for (var i = 0; i < n; i++) {
+      var a = Math.random() * Math.PI * 2;
+      var sp = perfect ? rnd(55, 190) : rnd(25, 85);
+      G.fx.push({
+        t: 'p', x: x, y: y, z: 4,
+        vx: Math.cos(a) * sp * 0.9,
+        vy: Math.sin(a) * sp * 0.45,
+        vz: rnd(70, 210),
+        life: 0,
+        max: perfect ? 0.78 : 0.45,
+        size: perfect ? rnd(2.2, 3.6) : rnd(1.4, 2.4),
+        col: perfect ? (Math.random() < 0.5 ? '#FFD98A' : '#FFF4DC') : 'rgba(255,240,215,0.85)'
+      });
+    }
+    if (perfect) {
+      G.fx.push({ t: 'ring', x: x, y: y, life: 0, max: 0.55 });
+      G.fx.push({ t: 'text', x: x, y: y, z: 104, life: 0, max: 0.95, str: '完美 +2' });
+    }
+  }
+
+  function updateFx(dt) {
+    for (var i = G.fx.length - 1; i >= 0; i--) {
+      var f = G.fx[i];
+      f.life += dt;
+      if (f.t === 'p') {
+        f.x += f.vx * dt; f.y += f.vy * dt;
+        f.z += f.vz * dt;
+        f.vz -= 520 * dt;
+      } else if (f.t === 'text') {
+        f.z += 26 * dt;
+      }
+      if (f.life >= f.max) G.fx.splice(i, 1);
+    }
+  }
+
+  /* =========================================================
+     主循环
+     ========================================================= */
+  function update(dt, ts) {
+    // 相机缓动跟随当前方块
+    if (G.cur && G.mode !== 'over') {
+      var k = 1 - Math.exp(-dt * 6);
+      G.cam.x += (G.cur.x - G.cam.x) * k;
+      G.cam.y += (G.cur.y - G.cam.y) * k;
+    }
+
+    // 方块动画
+    for (var i = 0; i < G.platforms.length; i++) {
+      var p = G.platforms[i];
+      if (!(G.mode === 'charging' && p === G.cur)) {
+        p.sink += (0 - p.sink) * (1 - Math.exp(-dt * 16));
+      }
+      p.sq += (0 - p.sq) * (1 - Math.exp(-dt * 9));
+      if (p.pop < 1) p.pop = Math.min(1, p.pop + dt * 3.6);
+    }
+
+    // 蓄力
+    if (G.mode === 'charging') {
+      G.power = clamp((ts - G.chargeT) / CFG.chargeMs, 0, 1);
+      if (G.cur) G.cur.sink = easeOut(G.power) * 9;
+      G.player.sq = G.power * 0.8;
+    } else {
+      G.player.sq += (0 - G.player.sq) * (1 - Math.exp(-dt * 14));
+    }
+
+    // 飞行
+    if (G.mode === 'flying' && G.flying) {
+      var f = G.flying;
+      f.t += dt * 1000;
+      var t = Math.min(1, f.t / f.dur);
+      G.player.x = f.x0 + (f.x1 - f.x0) * t;
+      G.player.y = f.y0 + (f.y1 - f.y0) * t;
+      G.player.z = 4 * f.h * t * (1 - t);
+      G.player.rot = f.sign * Math.PI * 2 * t;
+      if (t >= 1) land();
+    }
+
+    // 坠落
+    if (G.mode === 'fall' && G.fall) {
+      G.fall.vz -= CFG.fallG * dt;
+      G.player.z += G.fall.vz * dt;
+      G.player.x += G.fall.vx * dt;
+      G.player.y += G.fall.vy * dt;
+      G.player.rot += G.fall.spin * dt;
+      G.fall.t += dt;
+      if (G.fall.t > 0.95) gameOver();
+    }
+
+    updateFx(dt);
+
+    // 背景浮尘
+    for (var d = 0; d < G.dust.length; d++) {
+      var du = G.dust[d];
+      du.y += du.vy * dt;
+      du.x += (du.vx + Math.sin(ts * 0.0006 + du.ph) * 6) * dt;
+      if (du.y < -10) { du.y = H + 10; du.x = Math.random() * W; }
+      if (du.x < -10) du.x = W + 10;
+      if (du.x > W + 10) du.x = -10;
+    }
+  }
+
+  /* =========================================================
+     绘制
+     ========================================================= */
+  function drawBg() {
+    var g = ctx.createLinearGradient(0, 0, 0, H);
+    g.addColorStop(0, '#080B12');
+    g.addColorStop(0.48, '#121a2b');
+    g.addColorStop(1, '#0A0E18');
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, W, H);
+
+    var rg = ctx.createRadialGradient(W * 0.5, H * 0.6, 0, W * 0.5, H * 0.6, Math.max(W, H) * 0.62);
+    rg.addColorStop(0, 'rgba(96,128,200,0.16)');
+    rg.addColorStop(0.55, 'rgba(80,105,170,0.05)');
+    rg.addColorStop(1, 'rgba(80,105,170,0)');
+    ctx.fillStyle = rg;
+    ctx.fillRect(0, 0, W, H);
+
+    // 浮尘
+    for (var i = 0; i < G.dust.length; i++) {
+      var d = G.dust[i];
+      ctx.globalAlpha = d.a;
+      ctx.fillStyle = '#CFE0FF';
+      ctx.beginPath();
+      ctx.arc(d.x, d.y, d.r, 0, 6.2832);
+      ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+
+    // 底部暗角
+    var vg = ctx.createRadialGradient(W * 0.5, H * 0.5, Math.min(W, H) * 0.35, W * 0.5, H * 0.5, Math.max(W, H) * 0.8);
+    vg.addColorStop(0, 'rgba(0,0,0,0)');
+    vg.addColorStop(1, 'rgba(0,0,0,0.55)');
+    ctx.fillStyle = vg;
+    ctx.fillRect(0, 0, W, H);
+  }
+
+  function drawPlatform(p) {
+    var sc = (p.pop === undefined ? 1 : (0.55 + 0.45 * easeOut(p.pop)));
+    var w = p.r * sc;
+    var h = w * 0.5;
+    var sq = p.sq || 0;
+    var dep = p.depth * (1 - 0.42 * sq);
+    var top = p.y + (p.sink || 0) + sq * 8;
+
+    // 地面阴影
+    ctx.save();
+    ctx.translate(p.x, top + dep + 11);
+    ctx.scale(1, 0.42);
+    var gs = ctx.createRadialGradient(0, 0, 0, 0, 0, w * 1.35);
+    gs.addColorStop(0, 'rgba(0,0,0,0.45)');
+    gs.addColorStop(0.55, 'rgba(0,0,0,0.18)');
+    gs.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = gs;
+    ctx.beginPath();
+    ctx.arc(0, 0, w * 1.35, 0, 6.2832);
+    ctx.fill();
+    ctx.restore();
+
+    // 左侧面
+    ctx.beginPath();
+    ctx.moveTo(p.x - w, top);
+    ctx.lineTo(p.x, top + h);
+    ctx.lineTo(p.x, top + h + dep);
+    ctx.lineTo(p.x - w, top + dep);
+    ctx.closePath();
+    ctx.fillStyle = p.col.left;
+    ctx.fill();
+
+    // 右侧面
+    ctx.beginPath();
+    ctx.moveTo(p.x + w, top);
+    ctx.lineTo(p.x, top + h);
+    ctx.lineTo(p.x, top + h + dep);
+    ctx.lineTo(p.x + w, top + dep);
+    ctx.closePath();
+    ctx.fillStyle = p.col.right;
+    ctx.fill();
+
+    // 顶面
+    ctx.beginPath();
+    ctx.moveTo(p.x, top - h);
+    ctx.lineTo(p.x + w, top);
+    ctx.lineTo(p.x, top + h);
+    ctx.lineTo(p.x - w, top);
+    ctx.closePath();
+    ctx.fillStyle = p.col.top;
+    ctx.fill();
+
+    // 顶面光影
+    ctx.save();
+    ctx.clip();
+    var sh = ctx.createLinearGradient(p.x, top - h, p.x, top + h);
+    sh.addColorStop(0, 'rgba(255,255,255,0.20)');
+    sh.addColorStop(0.5, 'rgba(255,255,255,0.02)');
+    sh.addColorStop(1, 'rgba(0,0,0,0.12)');
+    ctx.fillStyle = sh;
+    ctx.fillRect(p.x - w, top - h, w * 2, h * 2);
+    ctx.restore();
+
+    // 上边缘高光
+    ctx.beginPath();
+    ctx.moveTo(p.x - w, top);
+    ctx.lineTo(p.x, top - h);
+    ctx.lineTo(p.x + w, top);
+    ctx.strokeStyle = 'rgba(255,255,255,0.26)';
+    ctx.lineWidth = 1.2;
+    ctx.stroke();
+  }
+
+  function drawPawn() {
+    // 底座
+    ctx.beginPath();
+    ctx.ellipse(0, -5, 13, 5, 0, 0, 6.2832);
+    ctx.fillStyle = '#948C7C';
+    ctx.fill();
+
+    // 身体
+    var bg = ctx.createLinearGradient(-13, 0, 13, 0);
+    bg.addColorStop(0, '#FFFDF6');
+    bg.addColorStop(0.42, '#F6EEDE');
+    bg.addColorStop(1, '#C3B79C');
+    ctx.beginPath();
+    ctx.moveTo(-10.5, -5);
+    ctx.bezierCurveTo(-9.8, -20, -7.8, -33, -7, -41);
+    ctx.lineTo(7, -41);
+    ctx.bezierCurveTo(7.8, -33, 9.8, -20, 10.5, -5);
+    ctx.ellipse(0, -5, 10.5, 4.6, 0, 0, Math.PI, false);
+    ctx.closePath();
+    ctx.fillStyle = bg;
+    ctx.fill();
+
+    // 腰线
+    ctx.beginPath();
+    ctx.moveTo(-9.35, -17);
+    ctx.lineTo(9.35, -17);
+    ctx.strokeStyle = 'rgba(233,169,74,0.9)';
+    ctx.lineWidth = 2.1;
+    ctx.stroke();
+
+    // 左侧轮廓光
+    ctx.beginPath();
+    ctx.moveTo(-8.7, -10);
+    ctx.bezierCurveTo(-8.1, -21, -6.9, -32, -6.3, -39.5);
+    ctx.strokeStyle = 'rgba(255,255,255,0.55)';
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+
+    // 头
+    var hg = ctx.createRadialGradient(-3.4, -52.5, 1, -2, -49, 13);
+    hg.addColorStop(0, '#FFFFFF');
+    hg.addColorStop(0.62, '#F8F1E3');
+    hg.addColorStop(1, '#CFC4AC');
+    ctx.beginPath();
+    ctx.arc(0, -49, 10.5, 0, 6.2832);
+    ctx.fillStyle = hg;
+    ctx.fill();
+  }
+
+  function drawPlayer() {
+    var pl = G.player;
+    var grounded = (G.mode === 'ready' || G.mode === 'charging' || G.mode === 'start') && G.cur;
+    var extra = grounded ? ((G.cur.sink || 0) + (G.cur.sq || 0) * 8) : 0;
+    if (grounded) extra += Math.sin(NOW * 0.0032) * 1.1;
+
+    // 蓄力时脚下的暖光
+    if (G.mode === 'charging' && G.power > 0.02) {
+      ctx.save();
+      ctx.translate(pl.x, pl.y + extra);
+      ctx.scale(1, 0.45);
+      var rg2 = ctx.createRadialGradient(0, 0, 0, 0, 0, 36);
+      rg2.addColorStop(0, 'rgba(245,200,120,' + (0.32 * G.power).toFixed(3) + ')');
+      rg2.addColorStop(1, 'rgba(245,200,120,0)');
+      ctx.fillStyle = rg2;
+      ctx.beginPath();
+      ctx.arc(0, 0, 36, 0, 6.2832);
+      ctx.fill();
+      ctx.restore();
+    }
+
+    // 影子
+    var shA = clamp(1 - pl.z / 240, 0.12, 1);
+    ctx.save();
+    ctx.translate(pl.x, pl.y + extra + 2);
+    ctx.scale(1, 0.42);
+    var g = ctx.createRadialGradient(0, 0, 0, 0, 0, 23);
+    g.addColorStop(0, 'rgba(0,0,0,' + (0.36 * shA).toFixed(3) + ')');
+    g.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.arc(0, 0, 23, 0, 6.2832);
+    ctx.fill();
+    ctx.restore();
+
+    // 本体
+    ctx.save();
+    ctx.translate(pl.x, pl.y + extra - pl.z);
+    ctx.scale(PC, PC);
+    ctx.translate(0, -28);
+    ctx.rotate(pl.rot);
+    ctx.translate(0, 28);
+    var sq = pl.sq || 0;
+    ctx.scale(1 + 0.30 * sq, 1 - 0.32 * sq);
+    drawPawn();
+    ctx.restore();
+  }
+
+  function drawFx() {
+    for (var i = 0; i < G.fx.length; i++) {
+      var f = G.fx[i];
+      var k = f.life / f.max;
+      if (f.t === 'p') {
+        ctx.globalAlpha = 1 - k;
+        ctx.fillStyle = f.col;
+        ctx.beginPath();
+        ctx.arc(f.x, f.y - f.z, f.size * (1 - k * 0.45), 0, 6.2832);
+        ctx.fill();
+      } else if (f.t === 'ring') {
+        var r = 10 + easeOut(k) * 48;
+        ctx.globalAlpha = (1 - k) * 0.85;
+        ctx.strokeStyle = '#FFD98A';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.ellipse(f.x, f.y, r, r * 0.5, 0, 0, 6.2832);
+        ctx.stroke();
+      } else if (f.t === 'text') {
+        ctx.globalAlpha = 1 - k * k;
+        ctx.fillStyle = '#FFD98A';
+        ctx.font = '600 17px -apple-system,"PingFang SC",sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.shadowColor = 'rgba(255,190,90,0.75)';
+        ctx.shadowBlur = 12;
+        ctx.fillText(f.str, f.x, f.y - f.z);
+        ctx.shadowBlur = 0;
+      }
+    }
+    ctx.globalAlpha = 1;
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'alphabetic';
+  }
+
+  function drawMeter() {
+    if (G.mode !== 'charging') return;
+    var bw = Math.min(200, W * 0.52), bh = 4;
+    var x = (W - bw) / 2, y = H - 46;
+    ctx.fillStyle = 'rgba(255,255,255,0.13)';
+    roundRect(x, y, bw, bh, 2);
+    ctx.fill();
+    var g = ctx.createLinearGradient(x, 0, x + bw, 0);
+    g.addColorStop(0, 'rgba(240,180,90,0.7)');
+    g.addColorStop(1, '#F7D493');
+    ctx.fillStyle = g;
+    ctx.shadowColor = 'rgba(240,180,90,0.55)';
+    ctx.shadowBlur = 8;
+    roundRect(x, y, Math.max(2, bw * G.power), bh, 2);
+    ctx.fill();
+    ctx.shadowBlur = 0;
+  }
+
+  function roundRect(x, y, w, h, r) {
+    r = Math.min(r, w / 2, h / 2);
+    ctx.beginPath();
+    ctx.moveTo(x + r, y);
+    ctx.lineTo(x + w - r, y);
+    ctx.arcTo(x + w, y, x + w, y + r, r);
+    ctx.lineTo(x + w, y + h - r);
+    ctx.arcTo(x + w, y + h, x + w - r, y + h, r);
+    ctx.lineTo(x + r, y + h);
+    ctx.arcTo(x, y + h, x, y + h - r, r);
+    ctx.lineTo(x, y + r);
+    ctx.arcTo(x, y, x + r, y, r);
+    ctx.closePath();
+  }
+
+  function render() {
+    ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+    drawBg();
+
+    // 世界相机变换
+    var tx = W * 0.5 - S * G.cam.x;
+    var ty = H * 0.66 - S * G.cam.y;
+    ctx.setTransform(DPR * S, 0, 0, DPR * S, DPR * tx, DPR * ty);
+
+    // 深度排序
+    var items = [];
+    for (var i = 0; i < G.platforms.length; i++) {
+      (function (p) {
+        items.push({ k: p.y, f: function () { drawPlatform(p); } });
+      })(G.platforms[i]);
+    }
+    var pk;
+    if (G.mode === 'flying' || G.mode === 'fall') pk = G.player.y + 14;
+    else pk = (G.cur ? G.cur.y : 0) + 0.5;
+    items.push({ k: pk, f: drawPlayer });
+    items.sort(function (a, b) { return a.k - b.k; });
+    for (var j = 0; j < items.length; j++) items[j].f();
+
+    drawFx();
+
+    // 回到屏幕坐标
+    ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+    drawMeter();
+  }
+
+  var last = 0;
+  function tick(ts) {
+    requestAnimationFrame(tick);
+    NOW = ts;
+    if (!last) last = ts;
+    var dt = Math.min(0.045, (ts - last) / 1000);
+    last = ts;
+    update(dt, ts);
+    render();
+  }
+
+  /* =========================================================
+     事件绑定
+     ========================================================= */
+  canvas.addEventListener('pointerdown', function (e) {
+    e.preventDefault();
+    press();
+  });
+  window.addEventListener('pointerup', function () {
+    if (G.mode === 'charging') release();
+  });
+  window.addEventListener('pointercancel', function () {
+    if (G.mode === 'charging') release();
+  });
+  canvas.addEventListener('contextmenu', function (e) { e.preventDefault(); });
+
+  window.addEventListener('keydown', function (e) {
+    if (e.code === 'Space' || e.key === ' ') {
+      e.preventDefault();
+      if (G.mode === 'ready') press();
+    }
+  });
+  window.addEventListener('keyup', function (e) {
+    if (e.code === 'Space' || e.key === ' ') {
+      e.preventDefault();
+      if (G.mode === 'charging') release();
+    }
+  });
+
+  document.getElementById('btnStart').addEventListener('click', function (e) {
+    e.stopPropagation();
+    startGame();
+  });
+  document.getElementById('btnRetry').addEventListener('click', function (e) {
+    e.stopPropagation();
+    startGame();
+  });
+
+  var soundBtn = document.getElementById('soundBtn');
+  soundBtn.addEventListener('pointerdown', function (e) { e.stopPropagation(); });
+  soundBtn.addEventListener('click', function (e) {
+    e.stopPropagation();
+    muted = !muted;
+    if (muted) stopChargeSound();
+    soundBtn.textContent = muted ? '音效 关' : '音效 开';
+    soundBtn.classList.toggle('off', muted);
+  });
+
+  window.addEventListener('resize', resize);
+  window.addEventListener('orientationchange', function () { setTimeout(resize, 180); });
+
+  /* =========================================================
+     启动
+     ========================================================= */
+  resize();
+  document.getElementById('best').textContent = G.best;
+  document.getElementById('best2').textContent = G.best;
+  reset();
+  G.mode = 'start';
+
+  // 分享链接可直接进入游戏
+  if (location.hash === '#play') startGame();
+  if (location.hash.indexOf('debug') >= 0) {
+    window.__jump = { G: G, press: press, release: release, start: startGame };
+  }
+
+  requestAnimationFrame(tick);
+})();
+</script>
+</body>
+</html>
